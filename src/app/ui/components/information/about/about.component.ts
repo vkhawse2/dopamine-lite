@@ -2,7 +2,6 @@ import { Component, ViewEncapsulation } from '@angular/core';
 import { ContactInformation } from '../../../../common/application/contact-information';
 import { ProductInformation } from '../../../../common/application/product-information';
 import { DialogServiceBase } from '../../../../services/dialog/dialog.service.base';
-import { DesktopBase } from '../../../../common/io/desktop.base';
 
 @Component({
     selector: 'app-about',
@@ -12,10 +11,7 @@ import { DesktopBase } from '../../../../common/io/desktop.base';
     encapsulation: ViewEncapsulation.None,
 })
 export class AboutComponent {
-    public constructor(
-        private dialogService: DialogServiceBase,
-        private desktop: DesktopBase,
-    ) {}
+    public constructor(private dialogService: DialogServiceBase) {}
 
     public applicationVersion: string = ProductInformation.applicationVersion;
     public applicationCopyright: string = ProductInformation.applicationCopyright;
@@ -26,9 +22,5 @@ export class AboutComponent {
 
     public showLicenseDialog(): void {
         this.dialogService.showLicenseDialog();
-    }
-
-    public async browseToDonateLinkAsync(): Promise<void> {
-        await this.desktop.openLinkAsync(ContactInformation.donateUrl);
     }
 }
