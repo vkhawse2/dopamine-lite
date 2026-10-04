@@ -25,8 +25,8 @@ export class RichLyricsComponent implements OnChanges, OnDestroy {
 
     private calculator: RichLyricsCalculator = new RichLyricsCalculator();
     private lyricInterval: ReturnType<typeof setInterval> | undefined;
-    private percentInterval: ReturnType<typeof setInterval> | undefined;
     private subscription: Subscription = new Subscription();
+    private lastFontSizeIndex: number = -1;
 
     public constructor(
         private playbackService: PlaybackService,
@@ -46,6 +46,7 @@ export class RichLyricsComponent implements OnChanges, OnDestroy {
         if (changes['lyrics']) {
             this.stopTimers();
             this.calculator.reset();
+            this.lastFontSizeIndex = -1;
             this.setRichLyricSize();
             this.startTimers();
         }
@@ -78,6 +79,11 @@ export class RichLyricsComponent implements OnChanges, OnDestroy {
             this.calculator.updateCurrentLyric(this.lyrics, currentTime);
             this.cText = this.calculator.getCurrentText(this.lyrics);
 
+            // The 100 Hz percent timer is gone: 4 Hz is plenty for a lyric progress bar.
+            if (this.hasEndTimes) {
+                this.calculator.calculatePercentage(this.lyrics, currentTime);
+            }
+
             const lineCount = this.settings.richLyricsLineCount;
             const totalLines = this.lyrics.textLines?.length ?? 0;
             const currentIdx = this.calculator.currentIndex;
@@ -88,29 +94,22 @@ export class RichLyricsComponent implements OnChanges, OnDestroy {
 
             this.nText = this.calculator.getNextLines(this.lyrics, nextCount);
             this.pText = this.calculator.getPreviousLines(this.lyrics, prevCount);
-            this.calculateFontSize();
-            this.cd.detectChanges();
-        }, 250);
 
-        this.percentInterval = setInterval(() => {
-            if (this.lyrics == undefined || !this.hasEndTimes) {
-                return;
+            // Font sizing needs layout reads; only redo it when the active line changes,
+            // not on every tick.
+            if (currentIdx !== this.lastFontSizeIndex) {
+                this.lastFontSizeIndex = currentIdx;
+                this.calculateFontSize();
             }
 
-            const currentTime = this.playbackService.getCurrentProgress().progressSeconds;
-            this.calculator.calculatePercentage(this.lyrics, currentTime);
-        }, 10);
+            this.cd.detectChanges();
+        }, 250);
     }
 
     private stopTimers(): void {
         if (this.lyricInterval != undefined) {
             clearInterval(this.lyricInterval);
             this.lyricInterval = undefined;
-        }
-
-        if (this.percentInterval != undefined) {
-            clearInterval(this.percentInterval);
-            this.percentInterval = undefined;
         }
     }
 
@@ -121,13 +120,23 @@ export class RichLyricsComponent implements OnChanges, OnDestroy {
 
     private calculateFontSize(): void {
         const main = document.getElementsByClassName('rich-main')[0] as HTMLElement;
-        const parent = document.getElementsByClassName('rich-contain')[0];
 
-        if (main != undefined && parent != undefined) {
-            while (this.mainRichLyricSize > this.minimumRichLyricSize && main.offsetWidth < main.scrollWidth) {
-                this.mainRichLyricSize = Math.max(this.minimumRichLyricSize, this.mainRichLyricSize - 0.05);
-                this.cd.detectChanges();
-            }
+        if (main == undefined) {
+            return;
         }
+
+        // Shrink-to-fit using direct DOM writes (each read forces a sync layout, no
+        // Angular change detection needed mid-loop), then sync the binding once.
+        // Template binds: [style.font-size]="mainRichLyricSize * 2 + 'vmin'".
+        let size: number = this.settings.richLyricsFontSize;
+        main.style.fontSize = `${size * 2}vmin`;
+
+        while (size > this.minimumRichLyricSize && main.offsetWidth < main.scrollWidth) {
+            size = Math.max(this.minimumRichLyricSize, size - 0.05);
+            main.style.fontSize = `${size * 2}vmin`;
+        }
+
+        this.mainRichLyricSize = size;
+        this.cd.detectChanges();
     }
 }
