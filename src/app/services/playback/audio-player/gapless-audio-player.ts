@@ -12,8 +12,6 @@ import { EqualizerServiceBase } from '../../equalizer/equalizer.service.base';
     providedIn: 'root',
 })
 export class GaplessAudioPlayer implements IAudioPlayer {
-    private _audio: HTMLAudioElement;
-    private _tempAudio: HTMLAudioElement = new Audio();
     private _playbackFinished: Subject<void> = new Subject();
     private _playbackFailed: Subject<string> = new Subject();
 
@@ -41,7 +39,6 @@ export class GaplessAudioPlayer implements IAudioPlayer {
         private equalizerService: EqualizerServiceBase,
         private logger: Logger,
     ) {
-        this._audio = new Audio();
         this._audioContext = new AudioContext();
         this._gainNode = this._audioContext.createGain();
 
@@ -54,21 +51,6 @@ export class GaplessAudioPlayer implements IAudioPlayer {
         this._analyser.fftSize = 128;
 
         this._gainNode.gain.setValueAtTime(1, 0);
-
-        try {
-            // This fails during unit tests because setSinkId() does not exist on HTMLAudioElement
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-            this._audio.setSinkId('default');
-        } catch (e: unknown) {
-            // Suppress this error, but log it, in case it happens in production.
-            this.logger.error(e, 'Could not perform setSinkId()', 'AudioPlayer', 'constructor');
-        }
-        this._audio.volume = 0;
-        this._audio.defaultPlaybackRate = 1;
-        this._audio.playbackRate = 1;
-        this._audio.muted = false;
     }
 
     public playbackFinished$: Observable<void> = this._playbackFinished.asObservable();
@@ -104,13 +86,6 @@ export class GaplessAudioPlayer implements IAudioPlayer {
         this._currentTrack = track;
         const playableAudioFilePath: string = PathUtils.createPlayableAudioFilePath(track.path);
         this.loadAudioWithWebAudio(playableAudioFilePath, false);
-
-        this._tempAudio = new Audio();
-        this._tempAudio.volume = 0;
-        this._tempAudio.defaultPlaybackRate = this._playbackRate;
-        this._tempAudio.playbackRate = this._playbackRate;
-        this._tempAudio.muted = false;
-        this._tempAudio.src = playableAudioFilePath;
     }
     public stop(): void {
         this._isPlaying = false;
@@ -123,9 +98,6 @@ export class GaplessAudioPlayer implements IAudioPlayer {
             this._sourceNode.stop();
             this._sourceNode.disconnect();
         }
-
-        this._audio.currentTime = 0;
-        this._audio.pause();
     }
 
     public async startPausedAsync(track: TrackModel, skipSeconds: number): Promise<void> {
@@ -147,12 +119,9 @@ export class GaplessAudioPlayer implements IAudioPlayer {
             this._sourceNode.stop();
             this._sourceNode.disconnect();
         }
-
-        this._audio.pause();
     }
     public async resumeAsync(): Promise<void> {
         await this.playWebAudioAsync(this._audioPausedAt);
-        await this._audio.play();
         this._isPaused = false;
     }
     public setVolume(linearVolume: number, replayGainMultiplier: number = 1): void {
@@ -166,10 +135,6 @@ export class GaplessAudioPlayer implements IAudioPlayer {
     public setPlaybackRate(rate: number): void {
         const progressSeconds: number = this.progressSeconds;
         this._playbackRate = rate;
-        this._audio.defaultPlaybackRate = rate;
-        this._audio.playbackRate = rate;
-        this._tempAudio.defaultPlaybackRate = rate;
-        this._tempAudio.playbackRate = rate;
 
         if (this._sourceNode) {
             this._sourceNode.playbackRate.setValueAtTime(rate, this._audioContext.currentTime);
@@ -179,7 +144,6 @@ export class GaplessAudioPlayer implements IAudioPlayer {
     public async skipToSecondsAsync(seconds: number): Promise<void> {
         const isPaused = this._isPaused;
         await this.playWebAudioAsync(seconds);
-        this._audio.currentTime = seconds;
 
         if (isPaused) {
             this.pause();
@@ -247,18 +211,18 @@ export class GaplessAudioPlayer implements IAudioPlayer {
             // Store the current time when audio starts playing
             this._audioStartTime = this._audioContext.currentTime - offset / this._playbackRate;
 
-            // Sync playback position with HTML5 Audio
+            // The Web Audio source node carries the audio; the former silent
+            // HTMLAudioElement shadow ("sync position with HTML5 Audio") is gone:
+            // progress is tracked on the AudioContext clock and media keys go
+            // through navigator.mediaSession, so the duplicate element/decoder
+            // was pure overhead.
             this._sourceNode.start(0, offset);
-
-            this._audio = this._tempAudio;
-            await this._audio.play();
 
             this._isPlaying = true;
             this._isPaused = false;
 
             if (this.shouldPauseAfterStarting) {
                 this.pause();
-                this._audio.currentTime = offset;
                 this.shouldPauseAfterStarting = false;
                 this._gainNode.gain.setValueAtTime(this._lastSetLogarithmicVolume, 0);
             }
