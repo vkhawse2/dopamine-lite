@@ -16,10 +16,6 @@
     <button mat-menu-item (click)="goToInformationAsync()">
         <i class="las la-info-circle mr-1 font-16px"></i> {{ 'information' | translate }}
     </button>
-    <mat-divider></mat-divider>
-    <button mat-menu-item (click)="browseToDonateLinkAsync()">
-        <i class="accent-color las la-heart mr-1 font-16px"></i> {{ 'donate' | translate }}
-    </button>
     <div *ngIf="this.updateService.isUpdateAvailable">
         <mat-divider></mat-divider>
         <button mat-menu-item (click)="downloadLatestReleaseAsync()">
