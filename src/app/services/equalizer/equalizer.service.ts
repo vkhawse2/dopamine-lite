@@ -55,6 +55,7 @@ export class EqualizerService implements EqualizerServiceBase {
         this.ensureInitialized();
         this._registeredEqualizers.add(equalizer);
         equalizer.setGains(this.effectiveGains());
+        equalizer.setBypassed(this.shouldBypass());
     }
 
     public unregister(equalizer: AudioEqualizer): void {
@@ -142,11 +143,19 @@ export class EqualizerService implements EqualizerServiceBase {
         return this._isEnabled ? this._gains : new Array<number>(this._gains.length).fill(0);
     }
 
+    private shouldBypass(): boolean {
+        // Bypass when disabled, or when enabled but every band is at 0 dB:
+        // unity biquads still execute per-sample math for no audible effect.
+        return !this._isEnabled || this._gains.every((gain: number) => gain === 0);
+    }
+
     private applyToRegisteredEqualizers(): void {
         const gains: number[] = this.effectiveGains();
+        const bypassed: boolean = this.shouldBypass();
 
         for (const equalizer of this._registeredEqualizers) {
             equalizer.setGains(gains);
+            equalizer.setBypassed(bypassed);
         }
     }
 }
