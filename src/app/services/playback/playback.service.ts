@@ -864,9 +864,11 @@ export class PlaybackService {
         this.reportProgress();
 
         if (this._progressInterval === 0) {
+            // Lite: 1 Hz is plenty for progress UI and halves the change-detection
+            // tree walks vs the original 500 ms tick.
             this._progressInterval = window.setInterval(() => {
                 this.reportProgress();
-            }, 500);
+            }, 1000);
         }
     }
 
