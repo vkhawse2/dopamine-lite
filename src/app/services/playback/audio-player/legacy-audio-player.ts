@@ -15,6 +15,7 @@ export class LegacyAudioPlayer implements IAudioPlayer {
     private _audioContext: AudioContext;
     private _analyser: AnalyserNode;
     private _equalizer: AudioEqualizer;
+    private _mediaElementSource: MediaElementAudioSourceNode | undefined;
     private _isPaused: boolean = false;
     private shouldPauseAfterStarting: boolean = false;
     private skipSecondsAfterStarting: number = 0;
@@ -170,7 +171,15 @@ export class LegacyAudioPlayer implements IAudioPlayer {
     }
 
     private connectVisualizer(): void {
-        const mediaElementSource: MediaElementAudioSourceNode = this._audioContext.createMediaElementSource(this._audio);
-        mediaElementSource.connect(this._equalizer.input);
+        // Disconnect the previous source node: without this, every track change
+        // leaks one MediaElementAudioSourceNode (plus its element) into the graph.
+        // Note: createMediaElementSource() may only be called once per element,
+        // but each playAsync() uses a fresh element, so this is safe.
+        if (this._mediaElementSource != undefined) {
+            this._mediaElementSource.disconnect();
+        }
+
+        this._mediaElementSource = this._audioContext.createMediaElementSource(this._audio);
+        this._mediaElementSource.connect(this._equalizer.input);
     }
 }
