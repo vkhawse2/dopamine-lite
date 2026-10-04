@@ -10,6 +10,7 @@ export class AudioVisualizer {
     private canvas: HTMLCanvasElement;
     private canvasContext: CanvasRenderingContext2D;
     private isStopped: boolean;
+    private isAnalyzing: boolean = false;
     private stopRequestTime: Date | undefined;
     private cssWidth: number;
     private cssHeight: number;
@@ -22,6 +23,23 @@ export class AudioVisualizer {
 
     public initialize(): void {
         this.dataArray = new Uint8Array(this.playbackService.audioPlayer.analyser.frequencyBinCount);
+        // The analysis loop is not started here on purpose: it starts lazily when
+        // a canvas connects, so idle/hidden sessions cost zero wakeups.
+        // Revive the loop after pause/resume cycles (pausing lets it die; see analyze()).
+        this.playbackService.playbackStarted$.subscribe(() => this.start());
+        this.playbackService.playbackResumed$.subscribe(() => this.start());
+    }
+
+    /**
+     * (Re)starts the analysis loop. Safe to call repeatedly; only one loop runs.
+     */
+    public start(): void {
+        if (this.isAnalyzing) {
+            return;
+        }
+
+        this.isAnalyzing = true;
+        this.isStopped = false;
         this.analyze();
     }
 
@@ -38,6 +56,8 @@ export class AudioVisualizer {
 
         this.cssWidth = rect.width;
         this.cssHeight = rect.height;
+
+        this.start();
     }
 
     private shouldStopDelayed(): boolean {
@@ -49,10 +69,36 @@ export class AudioVisualizer {
     }
 
     private analyze(): void {
+        if (!this.isAnalyzing) {
+            return;
+        }
+
+        // Stop permanently (do not re-arm) when the visualizer is disabled or
+        // there is no canvas to draw on. connectCanvas()/start() revives the loop.
+        if (this.shouldStopNow() || this.canvasContext == undefined) {
+            this.isAnalyzing = false;
+            this.isStopped = true;
+            return;
+        }
+
         setTimeout(
             () => {
+                if (!this.isAnalyzing || this.shouldStopNow()) {
+                    this.isAnalyzing = false;
+                    this.isStopped = true;
+                    return;
+                }
+
                 this.playbackService.audioPlayer.analyser.getByteFrequencyData(this.dataArray);
                 this.draw();
+
+                // Paused long enough that draw() settled into the stopped state:
+                // let the loop die instead of heartbeat-ing at 1 Hz forever.
+                // playbackStarted$/playbackResumed$ (see initialize()) revive it.
+                if (this.isStopped && this.shouldStopDelayed()) {
+                    this.isAnalyzing = false;
+                    return;
+                }
 
                 requestAnimationFrame(() => this.analyze());
             },
