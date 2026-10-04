@@ -10,6 +10,7 @@ export class AudioEqualizer {
     private readonly _input: GainNode;
     private readonly _output: GainNode;
     private readonly _filters: BiquadFilterNode[] = [];
+    private _isBypassed: boolean = false;
 
     public constructor(private audioContext: AudioContext) {
         this._input = audioContext.createGain();
@@ -53,6 +54,26 @@ export class AudioEqualizer {
         for (let i = 0; i < this._filters.length; i++) {
             const gain: number = gainsInDecibels[i] ?? 0;
             this._filters[i].gain.setValueAtTime(gain, this.audioContext.currentTime);
+        }
+    }
+
+    /**
+     * Bypasses the filter chain when the equalizer is effectively doing nothing.
+     * Zero-gain biquads are unity filters but still cost per-sample math, so when
+     * bypassed the input is wired straight to the output instead.
+     */
+    public setBypassed(bypassed: boolean): void {
+        if (bypassed === this._isBypassed || this._filters.length === 0) {
+            return;
+        }
+
+        this._isBypassed = bypassed;
+        this._input.disconnect();
+
+        if (bypassed) {
+            this._input.connect(this._output);
+        } else {
+            this._input.connect(this._filters[0]);
         }
     }
 }
