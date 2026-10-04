@@ -1,13 +1,17 @@
 import { Injectable } from '@angular/core';
 import { AudioVisualizerServiceBase } from './audio-visualizer.service.base';
 import { SettingsBase } from '../../common/settings/settings.base';
+import { AudioVisualizer } from '../playback/audio-visualizer';
 
 @Injectable()
 export class AudioVisualizerService implements AudioVisualizerServiceBase {
     private _selectedAudioVisualizerStyle: string;
     private _selectedAudioVisualizerFrameRate: number;
 
-    public constructor(private settings: SettingsBase) {
+    public constructor(
+        private settings: SettingsBase,
+        private audioVisualizer: AudioVisualizer,
+    ) {
         this._selectedAudioVisualizerStyle = this.getSelectedAudioVisualiserStyleFromSettings();
         this._selectedAudioVisualizerFrameRate = this.getSelectedAudioVisualiserFrameRateFromSettings();
     }
@@ -18,6 +22,11 @@ export class AudioVisualizerService implements AudioVisualizerServiceBase {
 
     public set showAudioVisualizer(v: boolean) {
         this.settings.showAudioVisualizer = v;
+
+        if (v) {
+            // The analysis loop stops itself when disabled; revive it on re-enable.
+            this.audioVisualizer.start();
+        }
     }
 
     public audioVisualizerStyles: string[] = ['flames', 'lines', 'bars'];
